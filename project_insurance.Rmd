@@ -1,0 +1,314 @@
+---
+title: "Medical Cost Prediction"
+author: "Elnaz Khaveh"
+date: "2023-01-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing the libraries
+
+In this part the required libararies are loaded.
+
+```{r, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)       
+library(caret)         
+library(MLmetrics)      
+library(GGally) 
+library(skimr)
+library(ggpubr)
+library(tidymodels)
+library(stats)
+library(randomForest)
+library(EnvStats)
+```
+
+## Loading the dataset
+
+The dataset used for this project is the "Medical costs in US" called as the insurance dataset.
+First this dataset is imported as df.
+
+```{r}
+df <- read.csv("data/insurance.csv", stringsAsFactors=TRUE)
+```
+
+Then we can have a look at the properties of the dataset:
+```{r}
+glimpse(df)
+```
+As shown in the results above, the data frame has 1338 observations and 7 features. The columns "Sex", "smoker", "region" are categorical, and the rest are numerical.
+
+
+To get to know some statistical properties of the columns, the command below is used:
+
+```{r}
+summary(df)
+```
+Here we can see the minimum, the maximum, different quantiles, and the mean for numerical variables and the number of each category for categorical ones.
+
+Skim, will give us these properties in the form of a table. Also it shows the number of missing values in each column which is 0, so we do not have any missing values in our dataset.
+```{r}
+skim(df)
+```
+In the first table, some information is shown like the number of missing values and the complete_rate(indicating the rate of completeness of the column which is 1 here). Also, it shows if they are in order or not and the number of categories.
+
+In the second table, for numerical variables, we can see the mean and standard deviation, p0-p100 as min,first quantile, second quantile, third quantile, and the maximum respectively. The histograms for each numerical column is shown in the column "hist".
+
+## Preprocessing and Expanatory Data Analysis
+
+### Outlier detection 
+
+From the table above we can see that there might be some outliers in the column "bmi", because above 30 is obese and we have 53 as maximum which is much more than the obese range.
+Also the column "charges" seems to have some outliers.
+So I did a statistical test to detect these outliers from the EnvStats library. It is called the ronserTest. This test has 2 advantages compared to other tests in R for outlier detection, like Grubbs and Dixon:
+
+1)it is used to detect several outliers at once (unlike Grubbs and Dixon test which must be performed iteratively to screen for multiple outliers).
+2)it is designed to avoid the problem of masking, where an outlier that is close in value to another outlier can go undetected.
+
+```{r}
+test <- rosnerTest(df$bmi,
+  k = 3
+)
+test$all.stats
+```
+In this test we can see that in the bmi there are no outliers because in the column "Outlier" in the table above all of them are false.
+
+Doing the same test for charges:
+```{r}
+library(EnvStats)
+test <- rosnerTest(df$charges,
+  k = 3
+)
+test$all.stats
+```
+Here there is one outlier in the 544th row. It can be removed since it is only one row, otherwise we could fill it with other values like the mean of that column.
+
+```{r}
+df_cleaned <- df[-544,]
+```
+
+At this stage, the number of duplicates in the dataset can be checked and then they are removed if there are any, because they might make disproportionate weights, especially when we have many of them.
+
+```{r}
+df_cleaned[duplicated(df_cleaned), ]
+```
+
+```{r}
+df_cleaned <- df_cleaned %>% 
+  distinct()
+```
+
+### Visualization
+
+In this section some information are illustrated using different plots. The first one shows the correlation between age and charges with considering the effects of "smoker","children","region", and "sex".
+```{r}
+
+a <- df_cleaned %>% 
+    ggplot(aes(x=age, y=charges, color=as.factor(sex))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+
+b <- df_cleaned %>% 
+    ggplot(aes(x=age, y=charges, color=as.factor(smoker))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+
+
+ggarrange(a , b ,
+          ncol = 2, nrow = 1)
+
+```
+As we can see in the plots above gender does not play an important role on charges, but smoking does. In other words, the charges are higher in the smoker group compared to non-smoker as the number of blue points are more when the charges increase. And in general the higher the age, the more the charges.
+
+In the next part, the impact of having a child on the costs amount is shown. I divided the dataset to having a child and not having a child to just see the impact of having children.
+```{r}
+df2 <- df_cleaned
+df2$"has_children" <- ifelse(df2$"children" > 0, TRUE, FALSE)
+```
+
+```{r}
+df2 %>% 
+    ggplot(aes(x=age, y=charges, color=as.factor(has_children))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+```
+The effect of having children on the costs is not that much significant.
+
+Here is the corellation between region and the charges:
+```{r}
+df_cleaned %>% 
+    ggplot(aes(x=age, y=charges, color=as.factor(region))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+```
+And as we can see there are no correlations between them.
+
+
+Now, regarding the correlation between the bmi, and the charges considering the categorical variables:
+```{r}
+
+c <- df_cleaned %>% 
+    ggplot(aes(x=bmi, y=charges, color=as.factor(sex))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+
+d <- df_cleaned %>% 
+    ggplot(aes(x=bmi, y=charges, color=as.factor(smoker))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+
+
+ggarrange(c , d ,
+          ncol = 2, nrow = 1)
+
+
+
+```
+Again smoking has a correlation with the charges but sex does not have any. And in general bmi does not have a significant correlation with the costs. But we have more data points with bmi<40.
+
+Having children, and region does not have any impact neither on bmi nor on the charges again, as before.
+
+```{r}
+df2 %>% 
+    ggplot(aes(x=bmi, y=charges, color=as.factor(has_children))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+```
+
+
+```{r}
+df_cleaned %>% 
+    ggplot(aes(x=bmi, y=charges, color=as.factor(region))) + 
+    geom_point(size=2)+
+    theme(legend.position = "top")
+```
+
+To see the general correlation heatmap:
+```{r}
+ggcorr(df_cleaned%>% mutate_if(is.factor, as.numeric), label = TRUE)
+```
+
+### Normalization
+Firstly, I ploted the density of the column "charges" to see what is its distribution:
+```{r}
+ggplot(data=df_cleaned,aes(df_cleaned$charges))+geom_histogram(mapping = aes(y=stat(density)),bins = 35,colour="black",fill="lightblue")+geom_density(col="red",lwd=2,lty=1)+labs(title = "histogram of charges with density curve ",x="charges")
+```
+
+```{r}
+ggplot(data=df_cleaned,aes(log(df_cleaned$charges)))+geom_histogram(mapping = aes(y=stat(density)),bins = 35,colour="black",fill="lightblue")+geom_density(col="red",lwd=2,lty=1)+labs(title = "histogram of log(charges) with density curve ",x="charges")
+```
+In the above plot we can see that, the range of charges has become smaller and the column follows a bell-curved distribution with positive values. But this normalization should be done after splitting the dataset to not to have data leakage issues.
+
+
+
+## Splitting the dataset
+Now, I splitted the dataset to train and test with 80% for training.
+```{r}
+set.seed(123)
+split <- initial_split(data = df_cleaned, prop = 0.80, strata = charges)
+
+# Training set
+train_set <- training(split)
+
+# Testing set
+test_set <- testing(split)
+```
+
+```{r}
+train_set$charges <- log(train_set$charges)
+test_set$charges <- log(test_set$charges)
+```
+
+## Model
+
+To train a model to predict the charges I tried lm and random forest. To do the variable selection forlm, I used a forward stepwise criterion, such that 2 models are defined first, one with no variable and the other with all of the variables. Then these models are given to the function step from the libarary "stats" to see which model has a less AIC.
+
+### Linear Model
+
+```{r}
+model_none_lm <- lm(charges ~ 1,data= train_set)
+model_all_lm <- lm(charges~.,data = train_set)
+```
+
+To Select the variables, we go step by step forward from no-variable model to all-variable model and then compare the AICs(Akaike information criterion), which is a measure for the quality of a statistical model.
+```{r}
+forwards_lm = stats::step(model_none_lm,
+scope=list(lower=formula(model_none_lm),upper=formula(model_all_lm)), direction="forward")
+```
+As we can see the AICs are sorted so the last one has the least AIC and is a better model.
+The best model can be shown:
+```{r}
+formula(forwards_lm)
+```
+Using a 5-fold cross validation for all of the models:
+```{r}
+trainCon <- trainControl(method = "cv", number = 5)
+```
+
+
+```{r}
+model_lm <- train(charges ~., data = train_set, method = "lm", trControl = trainCon)
+print(model_lm)
+```
+The next step is to predict the test set using the model chosen above:
+
+
+Since these predictions are the log(charges), so for more accurate results I transformed them back with exponential.
+```{r}
+predicted_lm <- exp(predict(model_lm, newdata = test_set[-7]))
+modelOutput_lm <- data.frame(obs = exp(test_set$charges), pred = predicted_lm)
+defaultSummary(modelOutput_lm)
+```
+
+```{r}
+summary(model_lm)
+```
+Also from the table we can see that all the variables are significant.
+Let's see the distribution plots for the actual value vs the fitted values.
+```{r}
+plot(predicted_lm,                               
+     exp(test_set$charges),
+     xlab = "LM Predicted Values",
+     ylab = "Observed Values")
+abline(a = 0,                                      
+       b = 1,
+       col = "red",
+       lwd = 2)
+```
+
+
+
+### Random Forest
+
+In the next step, a random forest is trained with a 5-fold cross validation and the same variables as lm in order to compare the results:
+
+```{r}
+model_rf <- train(charges ~ age + children + smoker+ bmi + region+sex,
+                   data = train_set, method = "rf", trControl = trainCon)
+print(model_rf)
+```
+
+Here again the predicted values are transformed back with exponential and we have the results:
+```{r}
+predicted_rf <- exp(predict(model_rf, newdata = test_set[-7]))
+modelOutput_rf <- data.frame(obs = exp(test_set$charges), pred = predicted_rf)
+defaultSummary(modelOutput_rf)
+```
+The results for random forest is much better than lm .
+```{r}
+plot(predicted_rf,                              
+     exp(test_set$charges),
+     xlab = "RF Predicted Values",
+     ylab = "Observed Values")
+abline(a = 0,                                        
+       b = 1,
+       col = "red",
+       lwd = 2)
+```
+
+
