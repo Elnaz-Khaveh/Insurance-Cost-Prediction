@@ -31,7 +31,7 @@ library(EnvStats)
 ## Loading the dataset
 
 The dataset used for this project is the "Medical costs in US" called as the insurance dataset.
-First this dataset is imported as df.
+First this dataset is imported as df and all the character columns are considered as factor with stringAsFactor.
 
 ```{r}
 df <- read.csv("data/insurance.csv", stringsAsFactors=TRUE)
@@ -123,6 +123,8 @@ ggarrange(a , b ,
           ncol = 2, nrow = 1)
 
 ```
+
+
 As we can see in the plots above gender does not play an important role on charges, but smoking does. In other words, the charges are higher in the smoker group compared to non-smoker as the number of blue points are more when the charges increase. And in general the higher the age, the more the charges.
 
 In the next part, the impact of having a child on the costs amount is shown. I divided the dataset to having a child and not having a child to just see the impact of having children.
@@ -137,6 +139,8 @@ df2 %>%
     geom_point(size=2)+
     theme(legend.position = "top")
 ```
+
+
 The effect of having children on the costs is not that much significant.
 
 Here is the corellation between region and the charges:
@@ -146,6 +150,8 @@ df_cleaned %>%
     geom_point(size=2)+
     theme(legend.position = "top")
 ```
+
+
 And as we can see there are no correlations between them.
 
 
@@ -169,6 +175,8 @@ ggarrange(c , d ,
 
 
 ```
+
+
 Again smoking has a correlation with the charges but sex does not have any. And in general bmi does not have a significant correlation with the costs. But we have more data points with bmi<40.
 
 Having children, and region does not have any impact neither on bmi nor on the charges again, as before.
@@ -202,6 +210,8 @@ ggplot(data=df_cleaned,aes(df_cleaned$charges))+geom_histogram(mapping = aes(y=s
 ```{r}
 ggplot(data=df_cleaned,aes(log(df_cleaned$charges)))+geom_histogram(mapping = aes(y=stat(density)),bins = 35,colour="black",fill="lightblue")+geom_density(col="red",lwd=2,lty=1)+labs(title = "histogram of log(charges) with density curve ",x="charges")
 ```
+
+
 In the above plot we can see that, the range of charges has become smaller and the column follows a bell-curved distribution with positive values. But this normalization should be done after splitting the dataset to not to have data leakage issues.
 
 
